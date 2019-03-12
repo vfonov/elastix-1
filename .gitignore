@@ -38,3 +38,6 @@ Makefile
 CMakeFiles/
 CTestTestfile.cmake
 .idea/
+
+# macOS
+.DS_Store

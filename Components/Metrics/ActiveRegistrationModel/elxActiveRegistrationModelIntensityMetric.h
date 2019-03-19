@@ -145,11 +145,8 @@ public:
   typedef typename Superclass2::RegistrationPointer  RegistrationPointer;
   typedef typename Superclass2::ITKBaseType          ITKBaseType;
 
-  typedef typename Superclass1::StatisticalModelVectorType                    StatisticalModelVectorType;
-  typedef typename Superclass1::StatisticalModelPointValueListType            StatisticalModelPointValueListType;
   typedef typename Superclass1::FixedImagePointType                           FixedImagePointType;
   typedef typename Superclass1::MovingImagePointType                          MovingImagePointType;
-  typedef typename Superclass1::StatisticalModelPointValuePairType            StatisticalModelPointValuePairType;
 
   typedef typename Superclass1::StatisticalModelImageType                     StatisticalModelImageType;
   typedef typename StatisticalModelImageType::Pointer                         StatisticalModelImagePointer;
@@ -157,33 +154,28 @@ public:
   typedef typename itk::ImageFileReader< StatisticalModelImageType >          ImageReaderType;
   typedef typename ImageReaderType::Pointer                                   ImageReaderPointer;
 
-  typedef vnl_vector< double >                                                StatisticalModelParameterVectorType;
-  typedef vector<string>                                                      StatisticalModelPathVectorType;
+  typedef typename Superclass1::StatisticalModelIdType                        StatisticalModelIdType;
+  typedef typename Superclass1::StatisticalModelPointer                       StatisticalModelPointer;
+
+  typedef typename Superclass1::StatisticalModelVectorType                    StatisticalModelVectorType;
+  typedef vector< std::string >                                               StatisticalModelPathVectorType;
 
   typedef typename Superclass1::MovingImagePointer                            MovingImagePointer;
 
-  typedef typename Superclass1::RepresenterType                               RepresenterType;
-  typedef typename Superclass1::RepresenterPointer                            RepresenterPointer;
+  typedef typename Superclass1::StatisticalModelRepresenterType               StatisticalModelRepresenterType;
+  typedef typename Superclass1::StatisticalModelRepresenterPointer            StatisticalModelRepresenterPointer;
 
-  typedef typename Superclass1::ModelBuilderType                              ModelBuilderType;
-  typedef typename Superclass1::ModelBuilderPointer                           ModelBuilderPointer;
+  typedef typename Superclass1::StatisticalModelModelBuilderType              StatisticalModelBuilderType;
+  typedef typename Superclass1::StatisticalModelBuilderPointer                StatisticalModelBuilderPointer;
 
-  typedef typename Superclass1::ReducedVarianceModelBuilderType               ReducedVarianceModelBuilderType;
-  typedef typename Superclass1::ReducedVarianceModelBuilderPointer            ReducedVarianceModelBuilderPointer;
+  typedef typename Superclass1::StatisticalModelReducedVarianceBuilderType    StatisticalModelReducedVarianceBuilderType;
+  typedef typename Superclass1::StatisticalModelReducedVarianceBuilderPointer StatisticalModelReducedVarianceBuilderPointer;
 
-  typedef typename Superclass1::StatisticalModelIdType                        StatisticalModelIdType;
-  typedef typename Superclass1::StatisticalModelType                          StatisticalModelType;
-  typedef typename Superclass1::StatisticalModelPointer                       StatisticalModelPointer;
+  typedef typename Superclass1::StatisticalModelDataManagerType               StatisticalModelDataManagerType;
+  typedef typename Superclass1::StatisticalModelDataManagerPointer            StatisticalModelDataManagerPointer;
+
   typedef typename Superclass1::StatisticalModelContainerType                 StatisticalModelContainerType;
   typedef typename Superclass1::StatisticalModelContainerPointer              StatisticalModelContainerPointer;
-  typedef typename Superclass1::StatisticalModelContainerConstIterator        StatisticalModelContainerConstIterator;
-
-  typedef typename Superclass1::StatisticalModelMatrixContainerType           StatisticalModelMatrixContainerType;
-  typedef typename Superclass1::StatisticalModelMatrixContainerPointer        StatisticalModelMatrixContainerPointer;
-  typedef typename Superclass1::StatisticalModelMatrixContainerConstIterator  StatisticalModelMatrixContainerConstIterator;
-
-  typedef typename Superclass1::DataManagerType                               DataManagerType;
-  typedef typename Superclass1::DataManagerPointer                            DataManagerPointer;
 
   typedef itk::ImageFileWriter< FixedImageType >                              FixedImageFileWriterType;
   typedef typename FixedImageFileWriterType::Pointer                          FixedImageFileWriterPointer;
@@ -193,22 +185,16 @@ public:
   itkSetMacro( MetricNumber, std::string );
   itkGetMacro( MetricNumber, std::string );
 
-  itkSetMacro( NoiseVariance, StatisticalModelParameterVectorType );
-  itkGetMacro( NoiseVariance, StatisticalModelParameterVectorType );
-
-  typename DataManagerType::Pointer LoadImagesFromDirectory( std::string imageDataDirectory,
-                                                             std::string referenceFilename );
-
-  typename DataManagerType::Pointer LoadImages( StatisticalModelPathVectorType imageFileNames,
-                                                std::string referenceFilename );
+  StatisticalModelDataManagerPointer ReadImagesFromDirectory( std::string imageDataDirectory,
+                                                              std::string referenceFilename );
 
   bool ReadImage( const std::string & imageFilename, StatisticalModelImagePointer & image );
 
   StatisticalModelPathVectorType ReadPath( std::string parameter );
 
-  StatisticalModelParameterVectorType ReadNoiseVariance( std::string parameter );
+  StatisticalModelVectorType ReadNoiseVariance();
 
-  StatisticalModelParameterVectorType ReadNumberOfPrincipalComponents( std::string parameter );
+  StatisticalModelVectorType ReadTotalVariance();
 
   /** Sets up a timer to measure the initialization time and
    * calls the Superclass' implementation.
@@ -220,9 +206,6 @@ public:
 
   // Build models
   virtual void BeforeRegistration( void );
-
-  // Set model for resolution
-  virtual void BeforeEachResolution( void );
 
   virtual void AfterEachResolution( void );
 
@@ -250,7 +233,6 @@ private:
   StatisticalModelPathVectorType m_SaveIntensityModelFileNames;
   StatisticalModelPathVectorType m_ImageDirectories;
   StatisticalModelPathVectorType m_ReferenceFilenames;
-  StatisticalModelParameterVectorType m_NoiseVariance;
 
 };
 

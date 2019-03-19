@@ -137,88 +137,66 @@ public:
   /** Get the value for single valued optimizers. */
   virtual MeasureType GetValue( const TransformParametersType & parameters ) const;
 
+  // ActiveRegistrationModel typedefs
+  typedef double                                                                  StatisticalModelScalarType;
   typedef vnl_vector< double >                                                    StatisticalModelVectorType;
   typedef vnl_matrix< double  >                                                   StatisticalModelMatrixType;
 
   typedef FixedImageType                                                          StatisticalModelImageType;
   typedef typename StatisticalModelImageType::Pointer                             StatisticalModelImagePointer;
 
-  typedef itk::StandardImageRepresenter<
-    typename StatisticalModelImageType::PixelType,
-    StatisticalModelImageType::ImageDimension >                                   RepresenterType;
-  typedef typename RepresenterType::Pointer                                       RepresenterPointer;
-
-  typedef vnl_vector< typename RepresenterType::ValueType >                       StatisticalModelPixelValueVectorType;
-  typedef typename std::vector< typename Superclass::MovingImageDerivativeType >  StatisticalModelDerivativeValueVectorType;
-
-  typedef DataManager< StatisticalModelImageType >                                DataManagerType;
-  typedef typename DataManagerType::Pointer                                       DataManagerPointer;
-
   typedef StatisticalModel< StatisticalModelImageType >                           StatisticalModelType;
-  typedef typename StatisticalModelImageType::PixelType                           StatisticalModelPixelType;
   typedef typename StatisticalModelType::Pointer                                  StatisticalModelPointer;
-  typedef typename StatisticalModelType::ConstPointer                             StatisticalModelConstPointer;
-  typedef typename StatisticalModelType::PointValuePairType                       StatisticalModelPointValuePairType;
-  typedef typename StatisticalModelType::PointValueListType                       StatisticalModelPointValueListType;
 
-  typedef PCAModelBuilder< StatisticalModelImageType >                            ModelBuilderType;
-  typedef typename ModelBuilderType::Pointer                                      ModelBuilderPointer;
+  typedef itk::StandardImageRepresenter<
+          typename StatisticalModelImageType::PixelType,
+          StatisticalModelImageType::ImageDimension >                             StatisticalModelRepresenterType;
+  typedef typename StatisticalModelRepresenterType::Pointer                       StatisticalModelRepresenterPointer;
 
-  typedef ReducedVarianceModelBuilder< StatisticalModelImageType >                ReducedVarianceModelBuilderType;
-  typedef typename ReducedVarianceModelBuilderType::Pointer                       ReducedVarianceModelBuilderPointer;
+  typedef DataManager< StatisticalModelImageType >                                StatisticalModelDataManagerType;
+  typedef typename StatisticalModelDataManagerType::Pointer                       StatisticalModelDataManagerPointer;
+
+  typedef PCAModelBuilder< StatisticalModelImageType >                            StatisticalModelModelBuilderType;
+  typedef typename StatisticalModelModelBuilderType::Pointer                      StatisticalModelBuilderPointer;
+
+  typedef ReducedVarianceModelBuilder< StatisticalModelImageType >                StatisticalModelReducedVarianceBuilderType;
+  typedef typename StatisticalModelReducedVarianceBuilderType::Pointer                       StatisticalModelReducedVarianceBuilderPointer;
 
   typedef unsigned int                                                            StatisticalModelIdType;
-  typedef VectorContainer< StatisticalModelIdType, StatisticalModelConstPointer > StatisticalModelContainerType;
-  typedef typename StatisticalModelContainerType::Pointer                         StatisticalModelContainerPointer;
-  typedef typename StatisticalModelContainerType::ConstPointer                    StatisticalModelContainerConstPointer;
-  typedef typename StatisticalModelContainerType::ConstIterator                   StatisticalModelContainerConstIterator;
 
-  typedef VectorContainer< StatisticalModelIdType, StatisticalModelMatrixType >   StatisticalModelMatrixContainerType;
-  typedef typename StatisticalModelMatrixContainerType::Pointer                   StatisticalModelMatrixContainerPointer;
-  typedef typename StatisticalModelMatrixContainerType::ConstPointer              StatisticalModelMatrixContainerConstPointer;
-  typedef typename StatisticalModelMatrixContainerType::ConstIterator             StatisticalModelMatrixContainerConstIterator;
+  typedef VectorContainer< StatisticalModelIdType, StatisticalModelPointer > StatisticalModelContainerType;
+  typedef typename StatisticalModelContainerType::Pointer                 StatisticalModelContainerPointer;
+  typedef typename StatisticalModelContainerType::ConstPointer            StatisticalModelContainerConstPointer;
+  typedef typename StatisticalModelContainerType::ConstIterator           StatisticalModelContainerConstIterator;
 
-  itkSetMacro( Level, unsigned int );
-  itkGetConstMacro( Level, unsigned int );
-
-  itkSetObjectMacro( StatisticalModelContainer, StatisticalModelContainerType );
+  itkSetConstObjectMacro( StatisticalModelContainer, StatisticalModelContainerType );
   itkGetConstObjectMacro( StatisticalModelContainer, StatisticalModelContainerType );
 
-  itkSetObjectMacro( StatisticalModelOrthonormalPCABasisMatrixContainer, StatisticalModelMatrixContainerType );
-  itkGetConstObjectMacro( StatisticalModelOrthonormalPCABasisMatrixContainer, StatisticalModelMatrixContainerType );
+  /** Initialize the Metric by making sure that all the components are
+  *  present and plugged together correctly.
+  */
+  virtual void Initialize( void );
 
-  itkSetMacro( WriteReconstructedImageEachIteration, bool );
-  itkGetConstMacro( WriteReconstructedImageEachIteration, bool );
-  itkBooleanMacro( WriteReconstructedImageEachIteration );
+  /** Get the derivatives of the match measure. */
+  void GetDerivative( const TransformParametersType & parameters,
+                      DerivativeType & Derivative ) const;
 
-  itkSetMacro( NumberOfPrincipalComponents, StatisticalModelVectorType );
-  itkGetMacro( NumberOfPrincipalComponents, StatisticalModelVectorType );
-  itkGetConstMacro( NumberOfPrincipalComponents, StatisticalModelVectorType );
-
-
-    /** Get the derivatives of the match measure. */
-  virtual void GetDerivative( const TransformParametersType & parameters,
-    DerivativeType & derivative ) const;
-
-  virtual void GetValueAndDerivative( const TransformParametersType & parameters,
-    MeasureType & value, DerivativeType & derivative ) const;
+  /**  Get value and derivatives for multiple valued optimizers. */
+  void GetValueAndDerivative( const TransformParametersType & parameters,
+                              MeasureType & Value, DerivativeType & Derivative ) const;
 
   void GetValueAndFiniteDifferenceDerivative( const TransformParametersType & parameters,
-                                              MeasureType & value,
-                                              DerivativeType & derivative ) const;
-  void GetValue( MeasureType & value,
-                      const TransformParametersType & parameters ) const;
+                                              MeasureType& value,
+                                              DerivativeType& derivative ) const;
+
+  void GetModelValue( const StatisticalModelPointer statisticalModel,
+                      MeasureType & modelValue,
+                      const TransformParametersType& parameters ) const;
 
 
-  void GetFiniteDifferenceDerivative( DerivativeType & derivative,
-                                      const TransformParametersType & parameters ) const;
-
-
-  /** Initialize the Metric by making sure that all the components
-   *  are present and plugged together correctly.
-   * \li Call the superclass' implementation
-   * \li Estimate the normalization factor, if asked for.  */
-  virtual void Initialize( void );
+  void GetModelFiniteDifferenceDerivative( const StatisticalModelPointer statisticalModel,
+                                           DerivativeType& modelDerivative,
+                                           const TransformParametersType & parameters ) const;
 
 protected:
 
@@ -241,25 +219,12 @@ protected:
   typedef typename Superclass::MovingImageDerivativeType           MovingImageDerivativeType;
   typedef typename Superclass::NonZeroJacobianIndicesType          NonZeroJacobianIndicesType;
 
-  /** Protected typedefs for SelfHessian */
-  typedef BSplineInterpolateImageFunction<
-    FixedImageType, CoordinateRepresentationType >                 FixedImageInterpolatorType;
-  typedef NearestNeighborInterpolateImageFunction<
-    FixedImageType, CoordinateRepresentationType >                DummyFixedImageInterpolatorType;
-  typedef ImageGridSampler< FixedImageType > SelfHessianSamplerType;
-
 private:
 
   ActiveRegistrationModelIntensityMetric( const Self & ); // purposely not implemented
   void operator=( const Self & );       // purposely not implemented
 
-  unsigned int m_Level;
-  bool m_WriteReconstructedImageEachIteration;
-
-  mutable StatisticalModelContainerConstPointer m_StatisticalModelContainer;
-  mutable StatisticalModelMatrixContainerConstPointer m_StatisticalModelOrthonormalPCABasisMatrixContainer;
-
-  StatisticalModelVectorType m_NumberOfPrincipalComponents;
+  StatisticalModelContainerConstPointer m_StatisticalModelContainer;
 };
 
 } // end namespace itk

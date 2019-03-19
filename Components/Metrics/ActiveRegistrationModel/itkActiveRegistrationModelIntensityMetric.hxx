@@ -19,12 +19,7 @@
 #define _itkActiveRegistrationModelImageIntensityMetric_hxx
 
 #include "itkActiveRegistrationModelIntensityMetric.h"
-#include "vnl/algo/vnl_matrix_update.h"
-#include "itkMersenneTwisterRandomVariateGenerator.h"
-
-#ifdef ELASTIX_USE_OPENMP
-#include <omp.h>
-#endif
+#include "vnl_sample.h"
 
 namespace itk {
 
@@ -45,10 +40,10 @@ ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
  * ********************* Initialize ****************************
  */
 
-template<class TFixedImage, class TMovingImage>
+template< class TFixedImage, class TMovingImage >
 void
-ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
-::Initialize(void) {
+ActiveRegistrationModelIntensityMetric< TFixedImage, TMovingImage >
+::Initialize() {
   /** Initialize transform, interpolator, etc. */
   Superclass::Initialize();
 } // end Initialize()
@@ -58,76 +53,199 @@ ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
  * ******************* PrintSelf *******************
  */
 
-template<class TFixedImage, class TMovingImage>
+template< class TFixedImage, class TMovingImage >
 void
-ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
-::PrintSelf(std::ostream &os, Indent indent) const {
-  Superclass::PrintSelf(os, indent);
+ActiveRegistrationModelIntensityMetric< TFixedImage, TMovingImage >
+::PrintSelf( std::ostream &os, Indent indent ) const {
+  Superclass::PrintSelf( os, indent );
 } // end PrintSelf()
+
+
+/**
+ * ******************* GetValueAndFiniteDifferenceDerivative *******************
+ */
+
+template< class TFixedImage, class TMovingImage >
+void
+ActiveRegistrationModelIntensityMetric< TFixedImage, TMovingImage >
+::GetValueAndFiniteDifferenceDerivative( const TransformParametersType & parameters,
+                                         MeasureType& value,
+                                         DerivativeType& derivative ) const
+{
+  value = NumericTraits< MeasureType >::ZeroValue();
+  derivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
+
+  // Loop over models
+  for( const auto& statisticalModel : this->GetStatisticalModelContainer()->CastToSTLConstContainer() )
+  {
+
+    // Initialize value container
+    MeasureType modelValue = NumericTraits< MeasureType >::ZeroValue();
+    DerivativeType modelDerivative = DerivativeType( this->GetNumberOfParameters() );
+    modelDerivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
+
+    this->GetModelValue( statisticalModel, modelValue, parameters );
+    this->GetModelFiniteDifferenceDerivative( statisticalModel, modelDerivative, parameters );
+
+    value += modelValue;
+    derivative += modelDerivative;
+  }
+
+  value /= this->GetStatisticalModelContainer()->Size();
+  derivative /= this->GetStatisticalModelContainer()->Size();
+
+  elxout << "FiniteDiff: " << value << ", " << derivative << std::endl;
+}
+
+
+
+
 
 
 /**
  * ******************* GetValue *******************
  */
 
-template<class TFixedImage, class TMovingImage>
-typename ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>::MeasureType
-ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
-::GetValue( const TransformParametersType &parameters ) const {
+template< class TFixedPointSet, class TMovingPointSet >
+typename ActiveRegistrationModelIntensityMetric< TFixedPointSet, TMovingPointSet >::MeasureType
+ActiveRegistrationModelIntensityMetric< TFixedPointSet, TMovingPointSet >
+::GetValue( const TransformParametersType& parameters ) const
+{
   MeasureType value = NumericTraits< MeasureType >::ZeroValue();
-  GetValue( value, parameters );
+
+  // Loop over models
+  for( const auto& statisticalModel : this->GetStatisticalModelContainer()->CastToSTLConstContainer() )
+  {
+    // Initialize value container
+    MeasureType modelValue = NumericTraits< MeasureType >::ZeroValue();
+
+    this->GetModelValue( statisticalModel, modelValue, parameters );
+
+    value += modelValue;
+  }
+
+  value /= this->GetStatisticalModelContainer()->Size();
+
   return value;
-}
+} // end GetValue()
+
+
+
+/**
+ * ******************* GetModelValue *******************
+ */
 
 template<class TFixedImage, class TMovingImage>
 void
 ActiveRegistrationModelIntensityMetric<TFixedImage, TMovingImage>
-::GetValue( MeasureType &value, const TransformParametersType &parameters ) const {
-  itkDebugMacro("GetValue( " << parameters << " ) ");
-  value = 0.0;
+::GetModelValue( const StatisticalModelPointer statisticalModel,
+                 MeasureType& modelValue,
+                 const TransformParametersType& parameters ) const {
 
   // Make sure transform parameters are up-to-date
-  this->SetTransformParameters(parameters);
+  this->SetTransformParameters( parameters );
 
-  /** Create iterator over the sample container. */
   ImageSampleContainerPointer sampleContainer = this->GetImageSampler()->GetOutput();
-  typename ImageSampleContainerType::ConstIterator fixedSampleContainerIterator = sampleContainer->Begin();
-  typename ImageSampleContainerType::ConstIterator fixedSampleContainerIteratorEnd = sampleContainer->End();
+  typename StatisticalModelType::PointValueListType fixedPointMovingImageValues;
 
-  unsigned int numberOfSamples = 0;
-  while( fixedSampleContainerIterator != fixedSampleContainerIteratorEnd )
+  FixedImagePointType fixedPoint;
+  MovingImagePointType movingPoint;
+  RealType movingImageValue;
+
+  for( const auto& sample : sampleContainer->CastToSTLConstContainer() )
   {
-    const FixedImagePointType& fixedPoint = fixedSampleContainerIterator->Value().m_ImageCoordinates;
-    MovingImagePointType       movingPoint;
-    RealType                   movingImageValue;
-
+    // Transform point
+    fixedPoint = sample.m_ImageCoordinates;
     bool sampleOk = this->TransformPoint( fixedPoint, movingPoint );
 
-    if( sampleOk )
-    {
-        sampleOk = this->EvaluateMovingImageValueAndDerivative( movingPoint, movingImageValue, 0 );
+    // Check if movingPoint is inside moving image
+    if( sampleOk ) {
+      sampleOk = this->m_Interpolator->IsInsideBuffer( movingPoint );
+    } else {
+      continue;
+    }
+
+    // Check if movingPoint is inside moving mask if moving mask is used
+    if( sampleOk ) {
+      sampleOk = this->IsInsideMovingMask(movingPoint);
+    } else {
+      continue;
+    }
+
+    // Sample moving image
+    if( sampleOk ) {
+      sampleOk = this->EvaluateMovingImageValueAndDerivative( movingPoint, movingImageValue, nullptr );
+    } else {
+      continue;
     }
 
     if( sampleOk )
     {
-      // TODO: GetLevel??????? Loop over models right?
-      const unsigned int pointId = this->GetStatisticalModelContainer()->ElementAt( this->GetLevel() )->GetRepresenter()->GetPointIdForPoint( fixedSampleContainerIterator->Value().m_ImageCoordinates );
-      movingImageValue -= this->GetStatisticalModelContainer()->ElementAt( this->GetLevel() )->DrawMeanAtPoint( pointId );
-      const StatisticalModelVectorType pcaBasis = this->GetStatisticalModelOrthonormalPCABasisMatrixContainer()->ElementAt( this->GetLevel() ).get_row( pointId );
-      value += movingImageValue * ( 1.0 - dot_product( pcaBasis, pcaBasis) ) * movingImageValue;
-
-      ++numberOfSamples;
+      fixedPointMovingImageValues.emplace_back( fixedPoint, movingImageValue );
     }
-
-    ++fixedSampleContainerIterator;
   }
 
-  if( numberOfSamples > 0 )
+  this->CheckNumberOfSamples( sampleContainer->Size(), fixedPointMovingImageValues.size() );
+
+  const auto coeffs = statisticalModel->ComputeCoefficientsForPointValues( fixedPointMovingImageValues, statisticalModel->GetNoiseVariance() );
+
+  // tmp = sum_J (M_j - mu_j) * (I - V_j V_j^T) * (M_j - mu_j)
+  RealType tmp = 0;
+  for( const auto& fixedPointMovingImageValue : fixedPointMovingImageValues ) {
+    const auto& fixedPoint = fixedPointMovingImageValue.first;
+    const auto& movingImageValue = fixedPointMovingImageValue.second;
+
+    tmp += ( movingImageValue - statisticalModel->DrawMeanAtPoint( fixedPoint ) ) *
+           ( movingImageValue - statisticalModel->DrawSampleAtPoint( coeffs, fixedPoint, true ) );
+  }
+
+  if( fixedPointMovingImageValues.size() > 0 )
   {
-    value /= numberOfSamples;
+    modelValue += tmp / fixedPointMovingImageValues.size();
   }
 
-} // end GetValue()
+} // end GetModelValue()
+
+
+/**
+ * ******************* GetModelFiniteDifferenceDerivative *******************
+ */
+
+template< class TFixedImage, class TMovingImage >
+void
+ActiveRegistrationModelIntensityMetric< TFixedImage, TMovingImage >
+::GetModelFiniteDifferenceDerivative( const StatisticalModelPointer statisticalModel,
+                                      DerivativeType& modelDerivative,
+                                      const TransformParametersType & parameters ) const
+{
+  const double h = 0.01;
+
+  // Get derivative (J(X)-W*(inv(C)*(W^T*J(X))))^T*f(X)
+  unsigned int siz = parameters.size();
+  for( unsigned int i = 0; i < parameters.size(); ++i )
+  {
+    MeasureType plusModelValue = NumericTraits< MeasureType >::ZeroValue();
+    MeasureType minusModelValue = NumericTraits< MeasureType >::ZeroValue();
+
+    TransformParametersType plusParameters = parameters;
+    TransformParametersType minusParameters = parameters;
+
+    plusParameters[ i ] += h;
+    minusParameters[ i ] -= h;
+
+    this->GetModelValue( statisticalModel, plusModelValue, plusParameters );
+    this->GetModelValue( statisticalModel, minusModelValue, minusParameters );
+
+    modelDerivative[ i ] += ( plusModelValue - minusModelValue ) / ( 2 * h );
+  }
+
+  this->SetTransformParameters( parameters );
+}
+
+
+
+
+
 
 
 /**
@@ -161,152 +279,110 @@ void
 ActiveRegistrationModelIntensityMetric< TFixedImage, TMovingImage >
 ::GetValueAndDerivative(
   const TransformParametersType & parameters,
-  MeasureType & value, DerivativeType & derivative ) const
-{
+  MeasureType & value, DerivativeType & derivative ) const {
+
+  this->SetTransformParameters( parameters );
+
   value = NumericTraits< MeasureType >::ZeroValue();
   derivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
 
-  StatisticalModelMatrixType I(FixedImageDimension, FixedImageDimension);
-  I.set_identity();
-
-  // Make sure transform parameters are up to date
-  this->SetTransformParameters( parameters );
-
-  TransformJacobianType Jacobian;
+  DerivativeType Jacobian( this->GetTransform()->GetNumberOfNonZeroJacobianIndices() );
   NonZeroJacobianIndicesType nzji( this->GetTransform()->GetNumberOfNonZeroJacobianIndices() );
-  DerivativeType imageJacobian( nzji.size() );
 
-  unsigned int numberOfSamples = 0u;
-  unsigned int numberOfPrincipalComponents;
+  ImageSampleContainerPointer sampleContainer = this->GetImageSampler()->GetOutput();
 
-  double movingImageValueInnerProduct = 0.0;
-
-  ImageSampleContainerPointer fixedSampleContainer = this->GetImageSampler()->GetOutput();
-  this->GetImageSampler()->Update();
-  typename ImageSampleContainerType::ConstIterator fixedSampleContainerIterator = fixedSampleContainer->Begin();
-  typename ImageSampleContainerType::ConstIterator fixedSampleContainerIteratorEnd = fixedSampleContainer->End();
-  while( fixedSampleContainerIterator != fixedSampleContainerIteratorEnd )
+  // Loop over models
+  for( const auto& statisticalModel : this->GetStatisticalModelContainer()->CastToSTLConstContainer() )
   {
-    const FixedImagePointType& fixedPoint = fixedSampleContainerIterator->Value().m_ImageCoordinates;
-    MovingImagePointType       movingPoint;
-    RealType                   movingImageValue;
-    MovingImageDerivativeType  movingImageDerivative;
+    // Initialize value container
+    MeasureType modelValue = NumericTraits< MeasureType >::ZeroValue();
+    DerivativeType modelDerivative = DerivativeType( this->GetNumberOfParameters() );
+    modelDerivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
 
-    bool sampleOk = this->TransformPoint( fixedPoint, movingPoint );
-    if( sampleOk )
+    typename StatisticalModelType::PointValueListType fixedPointMovingImageValues;
+    typename std::vector< MovingImageDerivativeType > movingImageDerivatives;
+
+    for( const auto& sample : sampleContainer->CastToSTLConstContainer() )
     {
-      sampleOk = this->EvaluateMovingImageValueAndDerivative( movingPoint, movingImageValue, &movingImageDerivative );
-    }
+      MovingImagePointType movingPoint;
+      RealType movingImageValue;
+      MovingImageDerivativeType movingImageDerivative;
 
-    if( sampleOk )
-    {
-      const unsigned int pointId = this->GetStatisticalModelContainer()->ElementAt( this->GetLevel() )->GetRepresenter()->GetPointIdForPoint( fixedSampleContainerIterator->Value().m_ImageCoordinates );
+      // Transform point
+      const FixedImagePointType& fixedPoint = sample.m_ImageCoordinates;
+      bool sampleOk = this->TransformPoint( fixedPoint, movingPoint );
 
-      // M'M
-      movingImageValue -= this->GetStatisticalModelContainer()->ElementAt( this->GetLevel() )->DrawMeanAtPoint( pointId );
-      movingImageValueInnerProduct += movingImageValue * movingImageValue;
-
-      // I-VV^T
-      const StatisticalModelVectorType PCABasis = this->GetStatisticalModelOrthonormalPCABasisMatrixContainer()->ElementAt( this->GetLevel() ).get_row( pointId );
-      // const double intensityModelReconstructionFactor = movingImageValue * ( 1.0 - dot_product( PCABasis, PCABasis ) );
-      const double intensityModelReconstructionFactor = movingImageValue * ( 1.0 - dot_product( PCABasis, PCABasis ) );
-
-      // (dM/dx)(dT/du)
-      this->m_AdvancedTransform->EvaluateJacobianWithImageGradientProduct( fixedPoint, movingImageDerivative, imageJacobian, nzji );
-
-      // Loop over Jacobian
-      for( unsigned int i = 0; i < imageJacobian.GetSize(); ++i )
-      {
-        const unsigned int mu = nzji[ i ];
-        derivative[ mu ] += intensityModelReconstructionFactor * imageJacobian[ i ];
+      // Check if movingPoint is inside moving image
+      if( sampleOk ) {
+        sampleOk = this->m_Interpolator->IsInsideBuffer( movingPoint );
+      } else {
+        continue;
       }
 
-      ++numberOfSamples;
+      // Check if movingPoint is inside moving mask if moving mask is used
+      if( sampleOk ) {
+        sampleOk = this->IsInsideMovingMask(movingPoint);
+      } else {
+        continue;
+      }
+
+      // Sample moving image
+      if( sampleOk ) {
+        sampleOk = this->EvaluateMovingImageValueAndDerivative(movingPoint, movingImageValue, &movingImageDerivative);
+      } else {
+        continue;
+      }
+
+      if( sampleOk )
+      {
+        fixedPointMovingImageValues.emplace_back( fixedPoint, movingImageValue );
+        movingImageDerivatives.emplace_back( movingImageDerivative );
+      }
     }
 
-    ++fixedSampleContainerIterator;
+    this->CheckNumberOfSamples( sampleContainer->Size(), fixedPointMovingImageValues.size() );
+
+    const auto coeffs = statisticalModel->ComputeCoefficientsForPointValues( fixedPointMovingImageValues, statisticalModel->GetNoiseVariance() );
+
+    for( auto it = std::make_pair( fixedPointMovingImageValues.begin(), movingImageDerivatives.begin() );
+         it.first != fixedPointMovingImageValues.end();
+         it.first++, it.second++) {
+
+      const FixedImagePointType& fixedPoint = it.first->first;
+      const RealType& movingImageValue = it.first->second;
+      const MovingImageDerivativeType& movingImageDerivative = *it.second;
+
+      // tmp = (M_j - mu_j) * (I - V_j V_j^T)
+      RealType tmp = movingImageValue - statisticalModel->DrawSampleAtPoint( coeffs, fixedPoint, true );
+      modelValue += ( movingImageValue - statisticalModel->DrawMeanAtPoint( fixedPoint ) ) * tmp;
+
+      // (dM/d{x,y,z})(dT/du)
+      this->m_AdvancedTransform->EvaluateJacobianWithImageGradientProduct( fixedPoint, movingImageDerivative, Jacobian, nzji );
+
+      // Loop over Jacobian
+      for( unsigned int i = 0; i < nzji.size(); ++i )
+      {
+        const unsigned int& mu = nzji[ i ];
+        modelDerivative[ mu ] += tmp * Jacobian[ i ];
+      }
+    }
+
+    value += modelValue / fixedPointMovingImageValues.size();
+    derivative += 2.0 * modelDerivative / fixedPointMovingImageValues.size();
   }
 
-  if( std::isnan( value ) )
-  {
-    itkExceptionMacro( "Model value is NaN.");
-  }
+  value /= this->GetStatisticalModelContainer()->Size();
+  derivative /= this->GetStatisticalModelContainer()->Size();
 
-  if( numberOfSamples > 0 )
-  {
-    value = movingImageValueInnerProduct / numberOfSamples;
-    derivative *= 2.0 / numberOfSamples;
-  }
-
-  const bool useFiniteDifferenceDerivative = true;
-  if( useFiniteDifferenceDerivative )
-  {
+  const bool useFiniteDifferenceDerivative = false;
+  if (useFiniteDifferenceDerivative) {
     elxout << "Analytical: " << value << ", " << derivative << std::endl;
-    value = NumericTraits< MeasureType >::ZeroValue();
-    derivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
     this->GetValueAndFiniteDifferenceDerivative( parameters, value, derivative );
+    elxout << "Parameters: " << parameters << std::endl;
   }
 
-} // end GetValueAndDerivative()
-
-
-/**
- * ******************* GetValueAndFiniteDifferenceDerivative *******************
- */
-
-template< class TFixedPointSet, class TMovingPointSet >
-void
-ActiveRegistrationModelIntensityMetric< TFixedPointSet, TMovingPointSet >
-::GetValueAndFiniteDifferenceDerivative( const TransformParametersType & parameters,
-                                         MeasureType & value,
-                                         DerivativeType & derivative ) const
-{
-  // Initialize value container
-  value = NumericTraits< MeasureType >::ZeroValue();
-  derivative.Fill( NumericTraits< DerivativeValueType >::ZeroValue() );
-
-  // Get value
-  this->GetValue( value, parameters );
-
-  // Get derivative
-  this->GetFiniteDifferenceDerivative( derivative, parameters );
-  elxout << "FiniteDifference   : " << value << ", " << derivative << std::endl;
-}
-
-/**
- * ******************* GetModelFiniteDifferenceDerivative *******************
- */
-
-template< class TFixedPointSet, class TMovingPointSet >
-void
-ActiveRegistrationModelIntensityMetric< TFixedPointSet, TMovingPointSet >
-::GetFiniteDifferenceDerivative( DerivativeType & modelDerivative,
-                                 const TransformParametersType & parameters ) const
-{
-  const double h = 0.01;
-
-  // Get derivative (J(X)-W*(inv(C)*(W^T*J(X))))^T*f(X)
-  unsigned int siz = parameters.size();
-  for( unsigned int i = 0; i < parameters.size(); ++i )
-{
-    MeasureType plusModelValue = NumericTraits< MeasureType >::ZeroValue();
-    MeasureType minusModelValue = NumericTraits< MeasureType >::ZeroValue();
-
-    TransformParametersType plusParameters = parameters;
-    TransformParametersType minusParameters = parameters;
-
-    plusParameters[ i ] += h;
-    minusParameters[ i ] -= h;
-
-    this->GetValue( plusModelValue, plusParameters );
-    this->GetValue( minusModelValue, minusParameters );
-
-    modelDerivative[ i ] += ( plusModelValue - minusModelValue ) / ( 2*h );
-  }
-
-  this->SetTransformParameters( parameters );
-}
-
+  return;
+}  // end GetValueAndDerivative()
 
 } // end namespace itk
 

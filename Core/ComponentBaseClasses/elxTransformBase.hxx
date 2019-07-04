@@ -1033,6 +1033,7 @@ TransformBase< TElastix >
    */
   const std::string ipp = this->GetConfiguration()->GetCommandLineArgument( "-ipp" );
   std::string       def = this->GetConfiguration()->GetCommandLineArgument( "-def" );
+  std::string       xfm = this->GetConfiguration()->GetCommandLineArgument( "-xfm" );
 
   /** For backwards compatibility def = ipp. */
   if( def != "" && ipp != "" )
@@ -1043,6 +1044,13 @@ TransformBase< TElastix >
   else if( def == "" && ipp != "" )
   {
     def = ipp;
+  }
+  
+  if( def == "" && xfm != "")
+  {
+    //silently setting this option
+    //def = "all";
+    // VF: TODO figure out when we actually need deformation?
   }
 
   /** If there is an input point-file? */

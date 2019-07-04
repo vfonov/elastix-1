@@ -69,15 +69,22 @@ main( int argc, char ** argv )
   bool            outFolderPresent = false;
   std::string     outFolder        = "";
   std::string     logFileName      = "";
+  bool            quiet = false;
 
   /** Put command line parameters into parameterFileList. */
-  for( unsigned int i = 1; static_cast< long >( i ) < argc - 1; i += 2 )
+  for( unsigned int i = 1; static_cast< long >( i ) < argc - 1;  )
   {
-    std::string key( argv[ i ] );
-    std::string value( argv[ i + 1 ] );
+    std::string key( argv[ i++ ] );
+    std::string value; // ( argv[ i + 1 ] );
+
+    if( key == "-q" || key == "--quiet") 
+      quiet = true;
+    else 
+      value = argv[i++];
 
     if( key == "-out" )
     {
+      
       /** Make sure that last character of the output folder equals a '/' or '\'. */
       const char last = value[ value.size() - 1 ];
       if( last != '/' && last != '\\' ) { value.append( "/" ); }
@@ -97,7 +104,12 @@ main( int argc, char ** argv )
       outFolderPresent = true;
       outFolder        = value;
 
-    } // end if key == "-out"
+    } // end if key == "-out" 
+  
+    if( key == "-xfm" ) //output to a file
+    {
+      outFolderPresent = true;
+    } 
 
     /** Attempt to save the arguments in the ArgumentMap. */
     if( argMap.count( key ) == 0 )
@@ -106,6 +118,7 @@ main( int argc, char ** argv )
     }
     else
     {
+      value = argv[i++];
       /** Duplicate arguments. */
       std::cerr << "WARNING!" << std::endl;
       std::cerr << "Argument " << key.c_str() << "is only required once." << std::endl;
@@ -129,10 +142,11 @@ main( int argc, char ** argv )
     && argMap.count( "-ipp" ) == 0
     && argMap.count( "-def" ) == 0
     && argMap.count( "-jac" ) == 0
+    && argMap.count( "-xfm" ) == 0
     && argMap.count( "-jacmat" ) == 0 )
   {
     std::cerr << "ERROR: At least one of the CommandLine options \"-in\", "
-              << "\"-def\", \"-jac\", or \"-jacmat\" should be given!" << std::endl;
+              << "\"-def\", \"-jac\", or \"-jacmat\", or \"-xfm\" should be given!" << std::endl;
     returndummy |= -1;
   }
 
@@ -176,9 +190,12 @@ main( int argc, char ** argv )
   /** Declare a timer, start it and print the start time. */
   itk::TimeProbe totaltimer;
   totaltimer.Start();
+  if(!quiet)
   elxout << "transformix is started at " << GetCurrentDateAndTime() << ".\n" << std::endl;
 
   /** Print where transformix was run. */
+  if(!quiet) {
+
   elxout << "which transformix:   " << argv[ 0 ] << std::endl;
   itksys::SystemInformation info;
   info.RunCPUCheck();
@@ -192,7 +209,7 @@ main( int argc, char ** argv )
          << info.GetNumberOfPhysicalCPU() << " cores @ "
          << static_cast< unsigned int >( info.GetProcessorClockFrequency() )
          << " MHz." << std::endl;
-
+  }
   /**
    * ********************* START TRANSFORMATION *******************
    */
@@ -201,9 +218,10 @@ main( int argc, char ** argv )
   transformix = TransformixMainType::New();
 
   /** Print a start message. */
+  if(!quiet) {
   elxout << "Running transformix with parameter file \""
          << argMap[ "-tp" ] << "\".\n" << std::endl;
-
+  }
   /** Run transformix. */
   returndummy = transformix->Run( argMap );
 
@@ -216,10 +234,11 @@ main( int argc, char ** argv )
 
   /** Stop timer and print it. */
   totaltimer.Stop();
+  if(!quiet) {
   elxout << "\ntransformix has finished at " << GetCurrentDateAndTime() << "." << std::endl;
   elxout << "Total time elapsed: "
          << ConvertSecondsToDHMS( totaltimer.GetMean(), 1 ) << ".\n" << std::endl;
-
+  }
   /** Clean up. */
   transformix = 0;
   TransformixMainType::UnloadComponents();
@@ -249,11 +268,13 @@ PrintHelp( void )
   std::cout << "The transform is specified in the transform-parameter file.\n";
   std::cout << "  --help, -h displays this message and exit\n";
   std::cout << "  --version  output version information and exit\n" << std::endl;
+  std::cout << "  --quiet, -q make program more quiet\n";
 
   /** Mandatory arguments. */
   std::cout << "Call transformix from the command line with mandatory arguments:\n";
   std::cout << "  -out      output directory\n";
   std::cout << "  -tp       transform-parameter file, only 1\n" << std::endl;
+  std::cout << "  -xfm      output transformation file\n";
 
   /** Optional arguments. */
   std::cout << "Optional extra commands:\n";
@@ -269,7 +290,7 @@ PrintHelp( void )
   std::cout << "  -priority set the process priority to high, abovenormal, normal (default),\n"
             << "            belownormal, or idle (Windows only option)\n";
   std::cout << "  -threads  set the maximum number of threads of transformix\n";
-  std::cout << "\nAt least one of the options \"-in\", \"-def\", \"-jac\", or \"-jacmat\" should be given.\n"
+  std::cout << "\nAt least one of the options \"-in\", \"-def\", \"-jac\", or \"-jacmat\", or \"-xfm\"  should be given.\n"
             << std::endl;
 
   /** The parameter file. */

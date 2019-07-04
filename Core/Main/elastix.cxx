@@ -86,15 +86,21 @@ main( int argc, char ** argv )
   bool                       outFolderPresent = false;
   std::string                outFolder        = "";
   std::string                logFileName      = "";
+  bool                       quiet = false;
 
   /** Put command line parameters into parameterFileList. */
-  for( unsigned int i = 1; static_cast< long >( i ) < ( argc - 1 ); i += 2 )
+  for( unsigned int i = 1; static_cast< long >( i ) < ( argc - 1 );  )
   {
-    std::string key( argv[ i ] );
-    std::string value( argv[ i + 1 ] );
+    std::string key( argv[ i++ ] );
+    std::string value;
 
+    if( key == "-q" || key == "--quiet" )
+    {
+      quiet=true;
+    } else 
     if( key == "-p" )
     {
+      value=argv[ i++ ];
       /** Queue the ParameterFileNames. */
       nrOfParameterFiles++;
       parameterFileList.push(
@@ -110,6 +116,7 @@ main( int argc, char ** argv )
     {
       if( key == "-out" )
       {
+        value=argv[ i++ ];
         /** Make sure that last character of the output folder equals a '/' or '\'. */
         const char last = value[ value.size() - 1 ];
         if( last != '/' && last != '\\' ) { value.append( "/" ); }
@@ -173,7 +180,7 @@ main( int argc, char ** argv )
     {
       /** Setup xout. */
       logFileName = outFolder + "elastix.log";
-      int returndummy2 = elx::xoutSetup( logFileName.c_str(), true, true );
+      int returndummy2 = elx::xoutSetup( logFileName.c_str(), true, !quiet );
       if( returndummy2 )
       {
         std::cerr << "ERROR while setting up xout." << std::endl;
@@ -198,14 +205,17 @@ main( int argc, char ** argv )
   /** Declare a timer, start it and print the start time. */
   itk::TimeProbe totaltimer;
   totaltimer.Start();
+  if(!quiet)
   elxout << "elastix is started at " << GetCurrentDateAndTime() << ".\n" << std::endl;
 
   /** Print where elastix was run. */
+  if(!quiet)
   elxout << "which elastix:   " << argv[ 0 ] << std::endl;
   itksys::SystemInformation info;
   info.RunCPUCheck();
   info.RunOSCheck();
   info.RunMemoryCheck();
+  if(!quiet) {
   elxout << "elastix runs at: " << info.GetHostname() << std::endl;
   elxout << "  " << info.GetOSName() << " "
          << info.GetOSRelease() << ( info.Is64Bits() ? " (x64), " : ", " )
@@ -214,7 +224,7 @@ main( int argc, char ** argv )
          << info.GetNumberOfPhysicalCPU() << " cores @ "
          << static_cast< unsigned int >( info.GetProcessorClockFrequency() )
          << " MHz." << std::endl;
-
+  }
   /**
    * ********************* START REGISTRATION *********************
    *
@@ -252,13 +262,16 @@ main( int argc, char ** argv )
     argMap.insert( ArgumentMapEntryType( argPair.first, argPair.second ) );
 
     /** Print a start message. */
+    if(!quiet) {
     elxout << "-------------------------------------------------------------------------" << "\n" << std::endl;
     elxout << "Running elastix with parameter file " << i
            << ": \"" << argMap[ "-p" ] << "\".\n" << std::endl;
+    }
 
     /** Declare a timer, start it and print the start time. */
     itk::TimeProbe timer;
     timer.Start();
+    if(!quiet)
     elxout << "Current time: " << GetCurrentDateAndTime() << "." << std::endl;
 
     /** Start registration. */
@@ -282,24 +295,29 @@ main( int argc, char ** argv )
     fixedImageOriginalDirection = elastices[ i ]->GetOriginalFixedImageDirectionFlat();
 
     /** Print a finish message. */
+    if(!quiet)
     elxout << "Running elastix with parameter file " << i
            << ": \"" << argMap[ "-p" ] << "\", has finished.\n" << std::endl;
 
     /** Stop timer and print it. */
     timer.Stop();
+    if(!quiet) {
     elxout << "\nCurrent time: " << GetCurrentDateAndTime() << "." << std::endl;
     elxout << "Time used for running elastix with this parameter file:\n  "
            << ConvertSecondsToDHMS( timer.GetMean(), 1 ) << ".\n" << std::endl;
+    }
 
     /** Try to release some memory. */
     elastices[ i ] = 0;
 
   } // end loop over registrations
 
+  if(!quiet)
   elxout << "-------------------------------------------------------------------------" << "\n" << std::endl;
 
   /** Stop totaltimer and print it. */
   totaltimer.Stop();
+  if(!quiet)
   elxout << "Total time elapsed: "
          << ConvertSecondsToDHMS( totaltimer.GetMean(), 1 ) << ".\n" << std::endl;
 
@@ -346,6 +364,7 @@ PrintHelp( void )
   std::cout << "The registration-process is specified in the parameter file.\n";
   std::cout << "  --help, -h displays this message and exit\n";
   std::cout << "  --version  output version information and exit\n" << std::endl;
+  std::cout << "  --quiet, -q make program more quiet\n";
 
   /** Mandatory arguments.*/
   std::cout << "Call elastix from the command line with mandatory arguments:\n";
